@@ -59,29 +59,98 @@ async function loadHistoryPanel() {
       historyList.innerHTML = '<p class="history-empty">No analyses yet.</p>';
       return;
     }
-    historyList.innerHTML = items.map(item => `
-      <div class="history-item" data-url="${escHtml(item.url)}">
+    let selectedForCompare = [];
+    
+    historyList.innerHTML = items.map((item, idx) => `
+      <div class="history-item" data-url="${escHtml(item.url)}" data-idx="${idx}">
         <div class="history-favicon-fallback">${item.category?.icon || '🌐'}</div>
         <div class="history-info">
           <div class="history-title">${escHtml(item.title || item.url)}</div>
           <div class="history-url">${escHtml(item.url)}</div>
-          <div class="history-meta">${formatDate(item.analyzedAt)}</div>
         </div>
-        <div class="history-risk">
+        <div class="history-actions-row">
+          <button class="compare-btn" title="Compare this site">⚔️</button>
           <div class="risk-dot ${item.security || 'MEDIUM'}"></div>
         </div>
       </div>`).join('');
+
     historyList.querySelectorAll('.history-item').forEach(el => {
-      el.addEventListener('click', () => {
+      // Main click to view
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('.compare-btn')) return;
         closeHistory();
         urlInput.value = el.dataset.url;
         runAnalysis(el.dataset.url);
       });
+
+      // Compare click
+      el.querySelector('.compare-btn').addEventListener('click', () => {
+        const idx = el.dataset.idx;
+        const item = items[idx];
+        
+        if (selectedForCompare.includes(item)) {
+          selectedForCompare = selectedForCompare.filter(i => i !== item);
+          el.classList.remove('selected-compare');
+        } else {
+          selectedForCompare.push(item);
+          el.classList.add('selected-compare');
+        }
+
+        if (selectedForCompare.length === 2) {
+          startComparison(selectedForCompare[0], selectedForCompare[1]);
+          selectedForCompare = [];
+          document.querySelectorAll('.selected-compare').forEach(s => s.classList.remove('selected-compare'));
+        } else if (selectedForCompare.length === 1) {
+          showToast('Select one more site to compare', 'info');
+        }
+      });
     });
-  } catch {
+  } catch (err) {
+    console.error(err);
     historyList.innerHTML = '<p class="history-empty">Failed to load history.</p>';
   }
 }
+
+function startComparison(a, b) {
+  closeHistory();
+  const overlay = document.getElementById('compareOverlay');
+  const grid = document.getElementById('compareGrid');
+  overlay.classList.add('visible');
+
+  const winnerA = a.masterScore?.total > b.masterScore?.total;
+  
+  const renderCol = (data, isWinner) => `
+    <div class="compare-col ${isWinner ? 'winner' : 'loser'}">
+      <div class="compare-site-info">
+        <h3>${escHtml(data.title || data.url)}</h3>
+        <p>${escHtml(data.url)}</p>
+      </div>
+      <div class="compare-gauge-wrap">
+        <div class="score-gauge">
+          <svg viewBox="0 0 36 36" class="circular-chart">
+            <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+            <path class="circle" style="stroke-dasharray: ${data.masterScore?.total || 0}, 100; stroke: ${data.masterScore?.total > 70 ? 'var(--green)' : 'var(--red)'}"
+              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+            <text x="18" y="20.35" class="percentage">${data.masterScore?.total || 0}</text>
+          </svg>
+        </div>
+      </div>
+      <div class="compare-metrics">
+        <div class="compare-metric"><span>Performance</span> <strong>${data.performance?.responseTime}ms</strong></div>
+        <div class="compare-metric"><span>Security</span> <strong>${data.security}</strong></div>
+        <div class="compare-metric"><span>Assets</span> <strong>${data.assets?.counts?.images || 0} imgs</strong></div>
+        <div class="compare-metric"><span>Category</span> <strong>${data.category?.name || 'N/A'}</strong></div>
+      </div>
+      ${isWinner ? '<div class="winner-badge">🏆 WINNER</div>' : ''}
+    </div>
+  `;
+
+  grid.innerHTML = renderCol(a, winnerA) + renderCol(b, !winnerA);
+}
+
+document.getElementById('closeCompareBtn').addEventListener('click', () => {
+  document.getElementById('compareOverlay').classList.remove('visible');
+});
 
 // ── Quick chips ───────────────────────────────────────────────
 document.querySelectorAll('.quick-chip').forEach(btn => {
@@ -160,7 +229,8 @@ async function runAnalysis(rawUrl) {
 
   } catch (err) {
     clearInterval(stepInterval);
-    showError('Could not connect to Ghost server. Make sure the backend is running.');
+    console.error('[runAnalysis] Error:', err);
+    showError(`Connection Error: ${err.message}. Check browser console for details.`);
   }
 }
 
@@ -170,6 +240,21 @@ function renderResults(data) {
   const domain = tryGetDomain(data.url);
   document.getElementById('resultsUrlInfo').innerHTML =
     `Analyzed <strong>${escHtml(domain)}</strong> &mdash; ${formatDate(data.analyzedAt)} &mdash; ${data.totalTime}ms total`;
+
+  renderMasterScore(data.masterScore);
+  renderAssets(data.assets, data.stack);
+  renderAiAudit(data.aiAudit);
+  
+  // Update quick metrics
+  const setMetric = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val;
+  };
+
+  setMetric('resResponseTime', `${data.performance.responseTime}ms`);
+  setMetric('resPageSize', formatBytes(data.performance.contentSize));
+  setMetric('resTrackersCount', data.trackers.length);
+  setMetric('resCategory', data.category?.name || 'N/A');
 
   renderPreview(data.preview, data.url);
   renderScreenshot(data.screenshot);
@@ -186,6 +271,62 @@ function renderResults(data) {
   initAudioSonification(data);
 
   showResults();
+}
+
+function renderMasterScore(score) {
+  const circle = document.getElementById('scoreCircle');
+  const valueText = document.getElementById('scoreValue');
+  const label = document.getElementById('scoreLabel');
+
+  if (!circle || !valueText || !label) {
+    console.error('[renderMasterScore] Missing elements:', { circle, valueText, label });
+    return;
+  }
+
+  // SVG dasharray: (percentage / 100) * 100
+  circle.style.strokeDasharray = `${score.total}, 100`;
+  
+  // Color the circle
+  let color = 'var(--red)';
+  if (score.total >= 80) color = 'var(--green)';
+  else if (score.total >= 60) color = 'var(--yellow)';
+  circle.style.stroke = color;
+
+  valueText.textContent = score.total;
+  label.textContent = score.label;
+  label.style.color = color;
+}
+
+function renderAssets(assets, stack) {
+  const statsEl = document.getElementById('assetStats');
+  const stackEl = document.getElementById('techStack');
+
+  const items = [
+    { label: 'Images', count: assets.counts.images, icon: '🖼️' },
+    { label: 'Scripts', count: assets.counts.scripts, icon: '📜' },
+    { label: 'Styles', count: assets.counts.styles, icon: '🎨' },
+    { label: 'External', count: assets.counts.externalScripts, icon: '🌐' }
+  ];
+
+  statsEl.innerHTML = items.map(item => `
+    <div class="a-stat">
+      <span>${item.icon} ${item.label}</span>
+      <span class="a-count">${item.count}</span>
+    </div>
+  `).join('');
+
+  if (stack && stack.length > 0) {
+    stackEl.innerHTML = stack.map(tech => `<span class="tech-badge">${tech}</span>`).join('');
+  } else {
+    stackEl.innerHTML = '<span class="text-muted">No specific stack detected</span>';
+  }
+}
+
+function renderAiAudit(audit) {
+  document.getElementById('aiSummary').textContent = audit.summary;
+  document.getElementById('aiInsights').innerHTML = audit.insights.map(ins => `
+    <div class="ai-insight-item">${escHtml(ins)}</div>
+  `).join('');
 }
 
 function renderPreview(preview, url) {
@@ -209,16 +350,44 @@ function renderPreview(preview, url) {
 function renderScreenshot(shot) {
   const el = document.getElementById('screenshotContainer');
   const badge = document.getElementById('screenshotBadge');
-  if (shot) {
-    el.innerHTML = `<img class="screenshot-img" src="${shot}" alt="Website screenshot" loading="lazy">`;
-    badge.textContent = 'LIVE';
-    badge.style.background = 'var(--green)';
+  
+  if (shot && shot.desktop) {
+    el.innerHTML = `
+      <div class="shot-tabs">
+        <button class="shot-tab active" onclick="switchShot('desktop')">Desktop</button>
+        <button class="shot-tab" onclick="switchShot('mobile')">Mobile</button>
+      </div>
+      <div class="shot-view">
+        <img class="screenshot-img desktop-shot" id="desktopShot" src="${shot.desktop}" alt="Desktop View">
+        <img class="screenshot-img mobile-shot hidden" id="mobileShot" src="${shot.mobile}" alt="Mobile View">
+      </div>
+    `;
+    badge.textContent = 'PRO';
+    badge.style.background = 'var(--accent)';
   } else {
-    el.innerHTML = `<div class="screenshot-unavailable"><div class="icon">🖥️</div>Screenshot unavailable<br><small>Puppeteer may not be installed or the page blocked headless browsers.</small></div>`;
+    el.innerHTML = `<div class="screenshot-unavailable"><div class="icon">🖥️</div>Screenshots failed<br><small>Check if Puppeteer is running.</small></div>`;
     badge.textContent = 'N/A';
     badge.style.background = 'var(--text2)';
   }
 }
+
+window.switchShot = (type) => {
+  const d = document.getElementById('desktopShot');
+  const m = document.getElementById('mobileShot');
+  const tabs = document.querySelectorAll('.shot-tab');
+  
+  if (type === 'desktop') {
+    d.classList.remove('hidden');
+    m.classList.add('hidden');
+    tabs[0].classList.add('active');
+    tabs[1].classList.remove('active');
+  } else {
+    d.classList.add('hidden');
+    m.classList.remove('hidden');
+    tabs[0].classList.remove('active');
+    tabs[1].classList.add('active');
+  }
+};
 
 function renderPerformance(perf) {
   const badge = document.getElementById('perfRatingBadge');
@@ -275,8 +444,11 @@ function renderSecurity(sec) {
   const checksHtml = (sec.checks || []).map(c => `
     <div class="header-check ${c.present ? 'pass' : 'fail'}">
       <div class="check-icon ${c.present ? 'pass' : 'fail'}">${c.present ? '✓' : '✗'}</div>
-      <div>
-        <div class="check-label">${escHtml(c.header)}</div>
+      <div class="check-info">
+        <div class="check-label-row">
+          <div class="check-label">${escHtml(c.header)}</div>
+          ${c.why ? `<div class="why-badge" title="${escHtml(c.why)}">Why it matters?</div>` : ''}
+        </div>
         <div class="check-desc">${escHtml(c.description)}</div>
       </div>
     </div>`).join('');
@@ -314,28 +486,18 @@ function renderSecurity(sec) {
 }
 
 function renderCategory(cat) {
-  document.getElementById('categoryCardBody').innerHTML = `
+  const body = document.getElementById('categoryCardBody');
+  const extra = document.getElementById('categoryExtraBody');
+  if (extra) extra.style.display = 'none';
+
+  body.innerHTML = `
     <div class="category-display">
-      <div class="category-icon">${cat.icon}</div>
-      <div class="category-name" style="color:${cat.color}">${escHtml(cat.name)}</div>
-      <div class="category-conf">Confidence: ${cat.confidence}</div>
-    </div>`;
-  document.getElementById('categoryExtraBody').innerHTML = `
-    <div class="category-display" style="align-items:flex-start;text-align:left;gap:.6rem">
-      <div style="font-size:.75rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2)">Detected As</div>
-      <div style="display:flex;align-items:center;gap:.75rem">
-        <span style="font-size:2rem">${cat.icon}</span>
-        <div>
-          <div style="font-size:1.1rem;font-weight:800;color:${cat.color}">${escHtml(cat.name)}</div>
-          <div style="font-size:.8rem;color:var(--text2);margin-top:.2rem">Based on domain & keyword analysis</div>
-        </div>
-      </div>
-      <div style="width:100%;margin-top:.5rem">
-        <div style="display:flex;justify-content:space-between;font-size:.75rem;color:var(--text2);margin-bottom:.3rem">
-          <span>Match confidence</span><span style="color:var(--text);font-weight:600">${cat.confidence}</span>
-        </div>
-        <div style="background:var(--bg);border-radius:100px;height:6px;overflow:hidden">
-          <div style="height:100%;border-radius:100px;background:${cat.color};width:${cat.confidence==='high'?'90':cat.confidence==='medium'?'55':'25'}%;transition:width 1s ease"></div>
+      <div class="category-icon" style="color:${cat.color}">${cat.icon}</div>
+      <div class="category-info-text">
+        <div class="category-name" style="color:${cat.color}">${escHtml(cat.name)}</div>
+        <div class="category-conf">Intelligence Confidence: ${cat.confidence}</div>
+        <div class="category-desc" style="font-size:.85rem; color:var(--text2); margin-top:.4rem">
+          Classified as <strong>${escHtml(cat.name)}</strong> via structural analysis.
         </div>
       </div>
     </div>`;
@@ -440,11 +602,21 @@ function setLoadingProgress(pct) {
 
 // ── Toast ─────────────────────────────────────────────────────
 function showToast(msg, type = '') {
+  const container = document.getElementById('toastContainer');
+  if (!container) {
+    console.warn('[showToast] toastContainer not found:', msg);
+    return;
+  }
   const t = document.createElement('div');
   t.className = `toast ${type}`;
   t.textContent = msg;
-  toastContainer.appendChild(t);
-  setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateY(8px)'; t.style.transition = 'all .3s'; setTimeout(() => t.remove(), 350); }, 2500);
+  container.appendChild(t);
+  setTimeout(() => { 
+    t.style.opacity = '0'; 
+    t.style.transform = 'translateY(8px)'; 
+    t.style.transition = 'all .3s'; 
+    setTimeout(() => t.remove(), 350); 
+  }, 2500);
 }
 
 // ── Utils ─────────────────────────────────────────────────────

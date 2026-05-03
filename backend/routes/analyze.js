@@ -32,12 +32,13 @@ router.post('/analyze', async (req, res) => {
 
     const cleanUrl = validation.url;
     const startTime = Date.now();
-
+    console.log(`[analyze] Starting analysis for: ${cleanUrl}`);
     // Fetch the page
     let fetchResult;
     try {
       fetchResult = await fetchPage(cleanUrl);
     } catch (err) {
+      console.error(`[analyze] Fetch failed for ${cleanUrl}:`, err.message);
       return res.status(422).json({
         error: `Could not reach "${cleanUrl}". ${err.message}`,
         code: err.code || 'FETCH_ERROR'
@@ -45,6 +46,7 @@ router.post('/analyze', async (req, res) => {
     }
 
     const { html, headers, statusCode, responseTime, contentSize, finalUrl } = fetchResult;
+    console.log(`[analyze] Page fetched: ${statusCode} (${contentSize} bytes)`);
 
     // Run analysis in parallel
     const [metadata, security, screenshot, trackersData, brandData] = await Promise.allSettled([
@@ -55,25 +57,43 @@ router.post('/analyze', async (req, res) => {
       Promise.resolve(extractBrandAssets(html))
     ]);
 
+    console.log(`[analyze] Services completed. Screenshot status: ${screenshot.status}`);
+
     const meta = metadata.status === 'fulfilled' ? metadata.value : {};
     const sec = security.status === 'fulfilled' ? security.value : { score: 'UNKNOWN', checks: [] };
     const shot = screenshot.status === 'fulfilled' ? screenshot.value : null;
     const trackers = trackersData.status === 'fulfilled' ? trackersData.value : [];
     const brand = brandData.status === 'fulfilled' ? brandData.value : { fonts: [], colors: [] };
-    
-    // Calculate eco
-    const eco = calculateCarbonFootprint(contentSize);
+    const { analyzeAssets } = require('../services/assets');
+    const { detectStack } = require('../services/fingerprint');
+    const { calculateMasterScore } = require('../services/scorer');
+    const { generateAudit } = require('../services/aiAudit');
 
-    // Classify website
+    const assets = analyzeAssets(html);
+    const stack = detectStack(html);
+    const eco = calculateCarbonFootprint(contentSize);
     const category = classifyWebsite(meta.title || '', meta.description || '', cleanUrl);
 
-    // Build response object
+    // Build partial result for scoring
+    const intermediateResult = {
+      performance: { responseTime, contentSize },
+      security: sec,
+      trackers,
+      preview: { title: meta.title, description: meta.description, favicon: meta.favicon, image: meta.ogImage }
+    };
+    const masterScore = calculateMasterScore(intermediateResult);
+    
+    // Generate AI Audit
+    const aiAudit = generateAudit({ ...intermediateResult, masterScore });
+
+    // Build final response object
     const result = {
       url: finalUrl || cleanUrl,
       analyzedAt: new Date().toISOString(),
       totalTime: Date.now() - startTime,
+      masterScore, 
+      aiAudit, 
 
-      // Preview metadata
       preview: {
         title: meta.title || null,
         description: meta.description || null,
@@ -84,15 +104,13 @@ router.post('/analyze', async (req, res) => {
         ogDescription: meta.ogDescription || null,
       },
 
-      // Performance
       performance: {
-        responseTime,         // ms
-        contentSize,          // bytes
+        responseTime,
+        contentSize,
         statusCode,
         rating: getPerformanceRating(responseTime, contentSize),
       },
 
-      // Security
       security: {
         protocol: cleanUrl.startsWith('https') ? 'HTTPS' : 'HTTP',
         score: sec.score,
@@ -104,15 +122,12 @@ router.post('/analyze', async (req, res) => {
         isHttps: sec.isHttps,
       },
 
-      // Classification
+      assets,
+      stack,
       category,
-
-      // New Interactive Features
       trackers,
       eco,
       brand,
-
-      // Screenshot (base64 PNG or null)
       screenshot: shot,
     };
 
@@ -126,6 +141,9 @@ router.post('/analyze', async (req, res) => {
       analyzedAt: result.analyzedAt,
     });
 
+    const desktopSize = shot?.desktop ? Math.round(shot.desktop.length / 1024) : 0;
+    const mobileSize = shot?.mobile ? Math.round(shot.mobile.length / 1024) : 0;
+    console.log(`[analyze] Sending response for: ${cleanUrl} (D:${desktopSize}kb, M:${mobileSize}kb)`);
     res.json({ success: true, data: result });
 
   } catch (err) {

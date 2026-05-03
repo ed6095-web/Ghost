@@ -17,7 +17,7 @@ async function fetchPage(url) {
 
   try {
     const response = await axios.get(url, {
-      timeout: 12000,
+      timeout: 15000,
       maxRedirects: 5,
       headers: {
         'User-Agent': userAgent,

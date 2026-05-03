@@ -11,68 +11,66 @@ try {
   console.warn('[screenshot] Puppeteer not available — screenshots will be skipped.');
 }
 
+// Simple in-memory cache for screenshots
+const screenshotCache = new Map();
+
 /**
  * @param {string} url
- * @returns {Promise<string|null>} base64 PNG string or null
+ * @returns {Promise<{desktop: string, mobile: string}|null>} base64 PNGs or null
  */
 async function captureScreenshot(url) {
   if (!puppeteer) return null;
+
+  // Check cache (valid for 1 hour)
+  if (screenshotCache.has(url)) {
+    const cached = screenshotCache.get(url);
+    if (Date.now() - cached.timestamp < 3600000) {
+      return cached.data;
+    }
+  }
 
   let browser = null;
   try {
     browser = await puppeteer.launch({
       headless: 'new',
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--no-first-run',
-        '--disable-extensions',
-        '--disable-background-networking',
-      ],
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      timeout: 30000
     });
 
     const page = await browser.newPage();
+    // Set a per-page timeout
+    page.setDefaultNavigationTimeout(20000);
+    
+    // 1. Desktop Capture
+    await page.setViewport({ width: 1366, height: 768 });
+    await page.goto(url, { waitUntil: 'networkidle2' });
+    const desktop = await page.screenshot({ type: 'jpeg', quality: 60 });
 
-    await page.setViewport({ width: 1280, height: 720 });
-    await page.setUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    );
+    // 2. Mobile Capture
+    await page.setViewport({ width: 375, height: 812, isMobile: true });
+    await new Promise(r => setTimeout(r, 1000));
+    const mobile = await page.screenshot({ type: 'jpeg', quality: 60 });
 
-    // Block heavy resources to speed up capture
-    await page.setRequestInterception(true);
-    page.on('request', (req) => {
-      const resourceType = req.resourceType();
-      if (['media', 'font'].includes(resourceType)) {
-        req.abort();
-      } else {
-        req.continue();
-      }
-    });
+    const result = {
+      desktop: `data:image/jpeg;base64,${desktop.toString('base64')}`,
+      mobile: `data:image/jpeg;base64,${mobile.toString('base64')}`
+    };
 
-    await page.goto(url, {
-      waitUntil: 'domcontentloaded',
-      timeout: 15000,
-    });
+    // Store in cache
+    screenshotCache.set(url, { data: result, timestamp: Date.now() });
 
-    // Wait a moment for above-the-fold content to render
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    const screenshot = await page.screenshot({
-      type: 'jpeg',
-      quality: 80,
-      clip: { x: 0, y: 0, width: 1280, height: 720 },
-    });
-
-    return `data:image/jpeg;base64,${screenshot.toString('base64')}`;
+    return result;
 
   } catch (err) {
     console.warn(`[screenshot] Failed to capture ${url}:`, err.message);
     return null;
   } finally {
     if (browser) {
-      try { await browser.close(); } catch {}
+      try {
+        await browser.close();
+      } catch (e) {
+        console.error('[screenshot] Error closing browser:', e.message);
+      }
     }
   }
 }
