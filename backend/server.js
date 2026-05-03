@@ -28,8 +28,11 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`\n👻 Ghost is running at http://localhost:${PORT}\n`);
-});
+// Only listen if running directly (not imported as a module by Vercel)
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`\n👻 Ghost is running at http://localhost:${PORT}\n`);
+  });
+}
 
 module.exports = app;
