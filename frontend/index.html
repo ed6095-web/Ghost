@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ghost — Smart Web Link Analyzer</title>
+  <meta name="description" content="Ghost analyzes any URL and reveals deep insights: metadata, performance metrics, security headers, category classification, and a live preview." />
+  <meta property="og:title" content="Ghost — Smart Web Link Analyzer" />
+  <meta property="og:description" content="Paste any URL and get instant structured insights with Ghost." />
+  <meta name="theme-color" content="#0d0d18" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Animated Background -->
+  <div class="bg-canvas" aria-hidden="true">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+    <div class="grid-overlay"></div>
+  </div>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-inner">
+      <a href="#" class="logo" id="logoHome">
+        <span class="logo-icon">👻</span>
+        <span class="logo-text">Ghost</span>
+        <span class="logo-badge">ANALYZER</span>
+      </a>
+      <div class="header-actions" style="display:flex; align-items:center; gap:1rem;">
+        <nav class="header-nav">
+          <button class="nav-btn" id="historyToggleBtn" title="View History">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            History
+          </button>
+          <button class="nav-btn theme-toggle" id="themeToggleBtn" title="Toggle theme">
+            <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+            <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          </button>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main" id="mainContent">
+    <!-- Hero Section -->
+    <section class="hero" id="heroSection">
+      <div class="hero-content">
+        <div class="hero-badge">
+          <span class="pulse-dot"></span>
+          Real-time URL Intelligence
+        </div>
+        <h1 class="hero-title">
+          See through <span class="gradient-text">any link</span>
+        </h1>
+        <p class="hero-subtitle">
+          Paste any URL and Ghost reveals everything — metadata, performance metrics, security posture, category classification, and a live preview.
+        </p>
+
+        <!-- URL Input Form -->
+        <form class="url-form" id="urlForm" novalidate>
+          <div class="input-wrapper" id="inputWrapper">
+            <span class="input-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            </span>
+            <input
+              type="text"
+              id="urlInput"
+              class="url-input"
+              placeholder="https://example.com or just paste a URL…"
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="off"
+              spellcheck="false"
+              aria-label="Website URL to analyze"
+            />
+            <button type="submit" class="analyze-btn" id="analyzeBtn" aria-label="Analyze URL">
+              <span class="btn-text">Analyze</span>
+              <svg class="btn-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            </button>
+          </div>
+          <p class="input-error" id="inputError" role="alert"></p>
+        </form>
+
+        <!-- Quick examples -->
+        <div class="quick-links" id="quickLinks">
+          <span class="quick-label">Try:</span>
+          <button class="quick-chip" data-url="https://github.com">GitHub</button>
+          <button class="quick-chip" data-url="https://nytimes.com">NYT</button>
+          <button class="quick-chip" data-url="https://netflix.com">Netflix</button>
+          <button class="quick-chip" data-url="https://wikipedia.org">Wikipedia</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Loading State -->
+    <section class="loading-section" id="loadingSection" aria-live="polite" aria-hidden="true">
+      <div class="loading-card">
+        <div class="loading-ghost">👻</div>
+        <div class="loading-text">Analyzing <span id="loadingUrl" class="mono"></span></div>
+        <div class="loading-steps" id="loadingSteps">
+          <div class="loading-step active" id="step-fetch">
+            <span class="step-dot"></span> Fetching page
+          </div>
+          <div class="loading-step" id="step-meta">
+            <span class="step-dot"></span> Extracting metadata
+          </div>
+          <div class="loading-step" id="step-security">
+            <span class="step-dot"></span> Analyzing security
+          </div>
+          <div class="loading-step" id="step-classify">
+            <span class="step-dot"></span> Classifying category
+          </div>
+          <div class="loading-step" id="step-screenshot">
+            <span class="step-dot"></span> Capturing screenshot
+          </div>
+        </div>
+        <div class="loading-bar-wrap">
+          <div class="loading-bar" id="loadingBar"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Results Section -->
+    <section class="results-section" id="resultsSection" aria-hidden="true">
+      <div class="results-header">
+        <div class="results-url-info" id="resultsUrlInfo"></div>
+        <div class="results-actions">
+          <button class="action-btn" id="copyLinkBtn" title="Copy share link">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copy Link
+          </button>
+          <button class="action-btn" id="downloadPdfBtn" title="Download report as PDF">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export PDF
+          </button>
+          <button class="action-btn primary" id="analyzeNewBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            New Analysis
+          </button>
+        </div>
+      </div>
+
+      <div class="results-grid" id="resultsGrid">
+        <!-- Preview Card -->
+        <div class="result-card preview-card" id="previewCard">
+          <div class="card-header">
+            <div class="card-title-row">
+              <span class="card-icon">🔗</span>
+              <h2 class="card-title">Link Preview</h2>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="link-preview" id="linkPreview">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Screenshot Card -->
+        <div class="result-card screenshot-card" id="screenshotCard">
+          <div class="card-header">
+            <div class="card-title-row">
+              <span class="card-icon">📸</span>
+              <h2 class="card-title">Screenshot</h2>
+              <span class="card-badge" id="screenshotBadge">LIVE</span>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="screenshot-container" id="screenshotContainer">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Performance Card -->
+        <div class="result-card perf-card" id="perfCard">
+          <div class="card-header">
+            <div class="card-title-row">
+              <span class="card-icon">⚡</span>
+              <h2 class="card-title">Performance</h2>
+              <span class="card-badge perf-badge" id="perfRatingBadge"></span>
+            </div>
+          </div>
+          <div class="card-body" id="perfCardBody">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- Security Game Container -->
+        <div class="result-card security-game-wrapper" id="securityGameWrapper">
+          
+          <!-- Front Card: The Swiper -->
+          <div class="security-swipe-card" id="securitySwipeCard">
+            <div class="swipe-header">
+              <span class="card-icon">🕵️</span>
+              <h2 class="card-title">Security Check</h2>
+            </div>
+            <div class="swipe-body">
+              <p>Is this site safe?</p>
+              <div class="swipe-clues" id="swipeClues">
+                <!-- Populated by JS -->
+              </div>
+              <div class="swipe-actions">
+                <button class="swipe-btn no" id="swipeNoBtn">Sus</button>
+                <button class="swipe-btn yes" id="swipeYesBtn">Safe</button>
+              </div>
+              <p class="swipe-hint">Swipe left for Sus, right for Safe.</p>
+            </div>
+          </div>
+
+          <!-- Back Card: The Actual Results -->
+          <div class="result-card security-card hidden-behind" id="securityCard">
+            <div class="card-header">
+              <div class="card-title-row">
+                <span class="card-icon">🛡️</span>
+                <h2 class="card-title">Security</h2>
+                <span class="card-badge security-badge" id="securityRiskBadge"></span>
+              </div>
+            </div>
+            <div class="card-body" id="securityCardBody">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Category + Metadata span full width -->
+        <div class="result-card category-card" id="categoryCard">
+          <div class="card-header" style="grid-column:1/3">
+            <div class="card-title-row">
+              <span class="card-icon">🏷️</span>
+              <h2 class="card-title">Website Classification</h2>
+            </div>
+          </div>
+          <div class="card-body" id="categoryCardBody">
+            <!-- Populated by JS -->
+          </div>
+          <div class="card-body category-extra" id="categoryExtraBody" style="border-left:1px solid var(--border)">
+            <!-- Extra category info populated by JS -->
+          </div>
+        </div>
+
+        <!-- Metadata Card -->
+        <div class="result-card meta-card" id="metaCard">
+          <div class="card-header">
+            <div class="card-title-row">
+              <span class="card-icon">📋</span>
+              <h2 class="card-title">Metadata</h2>
+            </div>
+          </div>
+          <div class="card-body" id="metaCardBody">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- NEW: Eco Footprint -->
+        <div class="result-card eco-card" id="ecoCard">
+          <div class="card-header">
+            <div class="card-title-row">
+              <span class="card-icon">🌱</span>
+              <h2 class="card-title">Carbon Footprint</h2>
+              <span class="card-badge eco-badge" id="ecoBadge"></span>
+            </div>
+          </div>
+          <div class="card-body eco-body" id="ecoCardBody">
+            <!-- Canvas/particles populated by JS -->
+            <div class="eco-visualizer" id="ecoVisualizer"></div>
+            <div class="eco-stats" id="ecoStats"></div>
+          </div>
+        </div>
+
+        <!-- NEW: Tracker Constellation -->
+        <div class="result-card trackers-card" id="trackersCard">
+          <div class="card-header">
+            <div class="card-title-row">
+              <span class="card-icon">🕸️</span>
+              <h2 class="card-title">Tracker Constellation</h2>
+            </div>
+          </div>
+          <div class="card-body trackers-body">
+            <canvas id="trackersCanvas" width="400" height="300"></canvas>
+            <div class="trackers-info" id="trackersInfo">Hover a node</div>
+          </div>
+        </div>
+
+        <!-- NEW: Brand Hacker -->
+        <div class="result-card brand-card" id="brandCard" style="grid-column:1/3">
+          <div class="card-header">
+            <div class="card-title-row">
+              <span class="card-icon">🎨</span>
+              <h2 class="card-title">Brand Hacker</h2>
+            </div>
+          </div>
+          <div class="card-body brand-body" id="brandCardBody">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- NEW: Sonification -->
+        <div class="result-card audio-card" id="audioCard" style="grid-column:1/3">
+          <div class="card-header">
+            <div class="card-title-row">
+              <span class="card-icon">🎵</span>
+              <h2 class="card-title">Website Sonification</h2>
+            </div>
+          </div>
+          <div class="card-body audio-body">
+            <div class="audio-controls">
+              <button id="audioPlayBtn" class="action-btn primary">
+                <span class="icon">▶️</span> Listen to the Code
+              </button>
+              <div class="audio-visualizer">
+                <div class="audio-bar" style="height:20%"></div>
+                <div class="audio-bar" style="height:40%"></div>
+                <div class="audio-bar" style="height:80%"></div>
+                <div class="audio-bar" style="height:30%"></div>
+                <div class="audio-bar" style="height:60%"></div>
+                <div class="audio-bar" style="height:50%"></div>
+                <div class="audio-bar" style="height:90%"></div>
+                <div class="audio-bar" style="height:40%"></div>
+              </div>
+            </div>
+            <p class="audio-desc">Generates a procedural soundtrack based on performance speed and security headers.</p>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Error Section -->
+    <section class="error-section" id="errorSection" aria-hidden="true">
+      <div class="error-card">
+        <div class="error-icon">💀</div>
+        <h2 class="error-title" id="errorTitle">Something went wrong</h2>
+        <p class="error-message" id="errorMessage"></p>
+        <button class="action-btn primary" id="errorRetryBtn">Try Again</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- History Panel -->
+  <aside class="history-panel" id="historyPanel" aria-hidden="true">
+    <div class="history-header">
+      <h2>Analysis History</h2>
+      <div class="history-actions">
+        <button class="icon-btn" id="clearHistoryBtn" title="Clear history">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+        </button>
+        <button class="icon-btn" id="closeHistoryBtn" title="Close panel">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="history-list" id="historyList">
+      <p class="history-empty">No analyses yet. Paste a URL to get started.</p>
+    </div>
+  </aside>
+  <div class="history-overlay" id="historyOverlay"></div>
+
+  <!-- Toast notifications -->
+  <div class="toast-container" id="toastContainer" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
